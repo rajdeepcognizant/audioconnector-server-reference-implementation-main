@@ -67,14 +67,17 @@ export class Session {
 
   setInputVariables(inputVariables: JsonStringMap) {
     this.inputVariables = inputVariables;
+    console.log(`inputVariables: ${inputVariables}.`);
   }
 
   setSelectedMedia(selectedMedia: MediaParameter) {
     this.selectedMedia = selectedMedia;
+    console.log(`selectedMedia: ${selectedMedia}.`);
   }
 
   setIsAudioPlaying(isAudioPlaying: boolean) {
     this.isAudioPlaying = isAudioPlaying;
+    console.log(`isAudioPlaying: ${isAudioPlaying}.`);
   }
 
   processTextMessage(data: string) {
@@ -201,7 +204,7 @@ export class Session {
     info: string,
     outputVariables: JsonStringMap
   ) {
-    this.disconnecting = true;
+    this.disconnecting = false;
 
     const disconnectParameters: DisconnectParameters = {
       reason,

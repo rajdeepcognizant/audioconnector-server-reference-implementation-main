@@ -63,22 +63,23 @@ export class Server {
       });
 
       ws.on("message", (data: WS.RawData, isBinary: boolean) => {
+        console.log("WebSocket message received." + data);
         if (ws.readyState !== WebSocket.OPEN) {
           return;
         }
 
         const session = this.sessionMap.get(ws);
 
-        if (!session) {
-          const dummySession: Session = new Session(
-            ws,
-            request.headers["audiohook-session-id"] as string,
-            request.url
-          );
-          console.log("Session does not exist.");
-          dummySession.sendDisconnect("error", "Session does not exist.", {});
-          return;
-        }
+        // if (!session) {
+        //   const dummySession: Session = new Session(
+        //     ws,
+        //     request.headers["audiohook-session-id"] as string,
+        //     request.url
+        //   );
+        //   console.log("Session does not exist.");
+        //   dummySession.sendDisconnect("error", "Session does not exist.", {});
+        //   return;
+        // }
 
         if (isBinary) {
           session.processBinaryMessage(data as Uint8Array);
