@@ -204,7 +204,7 @@ export class Session {
     info: string,
     outputVariables: JsonStringMap
   ) {
-    this.disconnecting = false;
+    this.disconnecting = f;
 
     const disconnectParameters: DisconnectParameters = {
       reason,
@@ -404,5 +404,22 @@ export class Session {
     }
 
     this.dtmfService.processDigit(digit);
+  }
+
+  sendAudioToCustomer(audioBuffer) {
+    if (!this.ws || this.ws.readyState !== this.ws.OPEN) {
+      console.warn(`[Session ${this.sessionId}] WebSocket not ready`);
+      return;
+    }
+
+    const message = {
+      type: "audio",
+      id: this.sessionId,
+      speaker: "external", // Matches the channel in your media config
+      audio: audioBuffer.toString("base64"),
+    };
+
+    this.ws.send(JSON.stringify(message));
+    console.log(`[Session ${this.sessionId}] Sent audio to customer`);
   }
 }
