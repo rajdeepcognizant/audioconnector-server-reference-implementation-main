@@ -1,50 +1,127 @@
-const WebSocket = require("ws");
-const Session = require("../common/session");
+import WS, { WebSocket } from "ws";
+import express, { Express, Request } from "express";
+import { verifyRequestSignature } from "../auth/authenticator";
+import { Session } from "../common/session";
+import { getPort } from "../common/environment-variables";
+import { SecretService } from "../services/secret-service";
 
-const wss = new WebSocket.Server({ port: 8080 });
-const sessions = {};
+export class Server {
+  private app: Express | undefined;
+  private httpServer: any;
+  private wsServer: any;
+  private sessionMap: Map<WebSocket, Session> = new Map();
+  private secretService = new SecretService();
 
-wss.on("connection", (ws) => {
-  console.log("New WebSocket connection established");
+  start() {
+    console.log(`Starting server on port: ${getPort()}`);
 
-  ws.on("message", async (data) => {
-    try {
-      const msg = JSON.parse(data);
+    this.app = express();
+    this.httpServer = this.app.listen(getPort());
+    this.wsServer = new WebSocket.Server({
+      noServer: true,
+    });
+    // req,socket,head, req.header = upgrade, Connection : websocket
+    this.httpServer.on(
+      "upgrade",
+      (request: Request, socket: any, head: any) => {
+        console.log(`Received a connection request from ${request.url}.`);
 
-      // Handle 'open' message to initialize session
-      if (msg.type === "open") {
-        const sessionId = msg.id;
-        const session = new Session(sessionId, ws);
-        sessions[sessionId] = session;
-        console.log(`Session opened: ${sessionId}`);
-        return;
+        verifyRequestSignature(request, this.secretService).then(
+          (verifyResult) => {
+            if (verifyResult.code !== "VERIFIED") {
+              console.log("Authentication failed, closing the connection.");
+              socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+              socket.destroy();
+              return;
+            }
+
+            this.wsServer.handleUpgrade(
+              request,
+              socket,
+              head,
+              (ws: WebSocket) => {
+                console.log("Authentication was successful.");
+                this.wsServer.emit("connection", ws, request);
+              }
+            );
+          }
+        );
       }
+    );
 
-      // Handle 'audio' message to process audio chunk
-      if (msg.type === "audio") {
-        const session = sessions[msg.id];
-        if (!session) {
-          console.warn(`No session found for ID: ${msg.id}`);
+    this.wsServer.on("connection", (ws: WebSocket, request: Request) => {
+      ws.on("close", () => {
+        const session = this.sessionMap.get(ws);
+        console.log("WebSocket connection closed.");
+        this.deleteConnection(ws);
+      });
+
+      ws.on("error", (error: Error) => {
+        const session = this.sessionMap.get(ws);
+        console.log(`WebSocket Error: ${error}`);
+        ws.close();
+      });
+
+      ws.on("message", (data: WS.RawData, isBinary: boolean) => {
+        console.log("WebSocket message received." + data);
+        if (ws.readyState !== WebSocket.OPEN) {
           return;
         }
 
-        session.handleAudio({
-          speaker: msg.speaker || "customer",
-          audioChunk: Buffer.from(msg.audio, "base64"),
-        });
-        return;
-      }
+        const session = this.sessionMap.get(ws);
 
-      console.warn(`Unknown message type: ${msg.type}`);
-    } catch (error) {
-      console.error("Error processing message:", error);
+        if (!session) {
+          const dummySession: Session = new Session(
+            ws,
+            request.headers["audiohook-session-id"] as string,
+            request.url
+          );
+          console.log("Session does not exist.");
+          dummySession.sendDisconnect("error", "Session does not exist.", {});
+          return;
+        }
+
+        if (isBinary) {
+          session.processBinaryMessage(data as Uint8Array);
+          console.log("processBinaryMessage::Audio Data" + data);
+        } else {
+          session.processTextMessage(data.toString());
+          console.log("processTextMessage:: Audio Data" + data);
+        }
+      });
+
+      this.createConnection(ws, request);
+    });
+  }
+
+  private createConnection(ws: WebSocket, request: Request) {
+    let session: Session | undefined = this.sessionMap.get(ws);
+
+    if (session) {
+      return;
     }
-  });
 
-  ws.on("close", () => {
-    console.log("WebSocket connection closed");
-    // Optionally clean up sessions
-  });
-});
+    session = new Session(
+      ws,
+      request.headers["audiohook-session-id"] as string,
+      request.url
+    );
+    console.log("Creating a new session.");
+    this.sessionMap.set(ws, session);
+  }
 
-console.log("AudioConnector WebSocket server is running on port 8080");
+  private deleteConnection(ws: WebSocket) {
+    const session: Session | undefined = this.sessionMap.get(ws);
+
+    if (!session) {
+      return;
+    }
+
+    try {
+      session.close();
+    } catch {}
+
+    console.log("Deleting session.");
+    this.sessionMap.delete(ws);
+  }
+}
