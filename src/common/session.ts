@@ -96,7 +96,11 @@ export class Session {
 
     const message = JSON.parse(data);
     const jsonMessage = JSON.parse(data);
-
+    if(jsonMessage.type === "open"){
+      console.log('jsonMessage',jsonMessage);
+      console.log('message',message);
+      console.log('jsonMessage.parameters',jsonMessage.parameters);
+    }
     if (jsonMessage.type === "open" && jsonMessage.parameters.inputVariables) {
       this.participant = jsonMessage.parameters.inputVariables.Participant;
       console.log(`New session opened for Participant: ${this.participant}`);
