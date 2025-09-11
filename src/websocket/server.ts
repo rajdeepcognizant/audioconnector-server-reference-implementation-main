@@ -63,8 +63,7 @@ export class Server {
       });
 
       ws.on("message", (data: WS.RawData, isBinary: boolean) => {
-        const textString = data.toString('utf8');
-        console.log("base64",textString)
+        console.log("base64",typeof data)
         console.log("WebSocket message received." + data);
         if (ws.readyState !== WebSocket.OPEN) {
           return;
