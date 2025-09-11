@@ -13,7 +13,7 @@ export class Server {
   private secretService = new SecretService();
 
   start() {
-    console.log(`Starting server on port: ${getPort()}`);
+    console.log(`Starting server on ports: ${getPort()}`);
 
     this.app = express();
     this.httpServer = this.app.listen(getPort());
