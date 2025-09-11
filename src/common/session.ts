@@ -233,6 +233,7 @@ export class Session {
     const message = this.createMessage("disconnect", disconnectParameters);
 
     this.send(message);
+    console.log(`Disconnect triggered by endpoint: Reason=${reason}, Info=${info}`);
   }
 
   sendClosed() {
