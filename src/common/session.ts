@@ -96,6 +96,7 @@ export class Session {
 
     const message = JSON.parse(data);
     const jsonMessage = JSON.parse(data);
+    console.log("Received Text Message:", message);
     if(jsonMessage.type === "open"){
       console.log('jsonMessage',jsonMessage);
       console.log('message',message);
