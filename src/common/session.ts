@@ -43,7 +43,7 @@ export class Session {
   private selectedBot: BotResource | null = null;
   private isCapturingDTMF = false;
   private isAudioPlaying = false;
-  private transcribeTranslateService: TranscribeTranslateService;
+  //private transcribeTranslateService: TranscribeTranslateService;
   private participant: string | undefined;
 
   constructor(ws: WebSocket, sessionId: string, url: string) {
@@ -51,10 +51,10 @@ export class Session {
     this.clientSessionId = sessionId;
     this.url = url;
     // Instantiate the new service
-    this.transcribeTranslateService = new TranscribeTranslateService();
+   // this.transcribeTranslateService = new TranscribeTranslateService();
 
     // Start the transcription session as soon as the WebSocket is open
-    this.transcribeTranslateService.startTranscriptionSession();
+    //this.transcribeTranslateService.startTranscriptionSession();
   }
 
   close() {
@@ -299,7 +299,7 @@ export class Session {
     }
 
     // Pass the audio chunk to the transcription service
-    this.transcribeTranslateService.processAudioChunk(data);
+   // this.transcribeTranslateService.processAudioChunk(data);
 
     if (this.participant) {
       console.log(
