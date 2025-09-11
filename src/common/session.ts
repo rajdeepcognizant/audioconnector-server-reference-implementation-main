@@ -299,6 +299,7 @@ export class Session {
    * See `asr-service` in the `services` folder for more information.
    */
   processBinaryMessage(data: Uint8Array) {
+    console.log("Received Binary Audio Message of length:", data.length);
     if (this.disconnecting || this.closed || !this.selectedBot) {
       return;
     }
