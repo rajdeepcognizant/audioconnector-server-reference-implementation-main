@@ -4,6 +4,7 @@ import { verifyRequestSignature } from "../auth/authenticator";
 import { Session } from "../common/session";
 import { getPort } from "../common/environment-variables";
 import { SecretService } from "../services/secret-service";
+import { Buffer } from 'buffer';
 
 export class Server {
   private app: Express | undefined;
