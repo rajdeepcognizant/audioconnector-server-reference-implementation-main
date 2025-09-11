@@ -86,11 +86,15 @@ export class Server {
         if (isBinary) {
           session.processBinaryMessage(data as Uint8Array);
           console.log("processBinaryMessage::Audio Data" + data);
-          // Convert the first 100 bytes to a Base64 string for inspection
-          const audioChunk = data.subarray(0, 100);
-          const base64Audio = Buffer.from(audioChunk).toString('base64');
-          
-          console.log("processBinaryMessage::Base64 Audio Data:", base64Audio);
+          // Cast data to Buffer to access .subarray()
+        const bufferData = data as Buffer;
+        session.processBinaryMessage(bufferData);
+        console.log("processBinaryMessage::Audio Data" + bufferData);
+
+        // Convert the first 100 bytes to a Base64 string for inspection
+        const audioChunk = bufferData.subarray(0, 100);
+        const base64Audio = Buffer.from(audioChunk).toString('base64');
+        console.log("processBinaryMessage::Base64 Audio Data:", base64Audio);
         } else {
           session.processTextMessage(data.toString());
           console.log("processTextMessage:: Audio Data" + data);
