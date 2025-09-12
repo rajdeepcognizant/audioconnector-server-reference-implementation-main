@@ -82,6 +82,7 @@ export class ASRService {
   private state = "None";
   private speechClient = new SpeechClient();
   private recognizeStream: any;
+  private streamInitialized = false;
 
   constructor() {
     this.initStream();
@@ -89,15 +90,7 @@ export class ASRService {
 
   private initStream() {
     this.recognizeStream = this.speechClient
-      .streamingRecognize({
-        config: {
-          encoding: "LINEAR16",
-          sampleRateHertz: 16000,
-          languageCode: "en-US",
-        },
-        interimResults: true,
-        singleUtterance: false,
-      })
+      .streamingRecognize()
       .on("error", (err: any) => {
         this.state = "Error";
         this.emitter.emit("error", err.message);
@@ -121,6 +114,21 @@ export class ASRService {
           );
         }
       });
+
+    // ✅ Send config as the first message
+    this.recognizeStream.write({
+      streamingConfig: {
+        config: {
+          encoding: "LINEAR16",
+          sampleRateHertz: 16000,
+          languageCode: "en-US",
+        },
+        interimResults: true,
+        singleUtterance: false,
+      },
+    });
+
+    this.streamInitialized = true;
   }
 
   on(event: string, listener: (...args: any[]) => void): ASRService {
@@ -133,6 +141,11 @@ export class ASRService {
   }
 
   processAudio(data: Uint8Array): ASRService {
+    if (!this.streamInitialized) {
+      this.emitter.emit("error", "Stream not initialized.");
+      return this;
+    }
+
     if (this.state === "Complete") {
       this.emitter.emit("error", "Speech recognition has already completed.");
       return this;
