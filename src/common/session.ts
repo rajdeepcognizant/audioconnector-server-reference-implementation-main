@@ -20,8 +20,6 @@ import { MessageHandlerRegistry } from "../websocket/message-handlers/message-ha
 import { BotService, BotResource, BotResponse } from "../services/bot-service";
 import { ASRService, Transcript } from "../services/asr-service";
 import { DTMFService } from "../services/dtmf-service";
-// Add the import for the new service
-import { TranscribeTranslateService } from "../services/translate-transcribe-service";
 
 export class Session {
   private MAXIMUM_BINARY_MESSAGE_SIZE = 64000;
@@ -43,18 +41,23 @@ export class Session {
   private selectedBot: BotResource | null = null;
   private isCapturingDTMF = false;
   private isAudioPlaying = false;
-  //private transcribeTranslateService: TranscribeTranslateService;
-  private participant: string | undefined;
 
   constructor(ws: WebSocket, sessionId: string, url: string) {
     this.ws = ws;
     this.clientSessionId = sessionId;
     this.url = url;
-    // Instantiate the new service
-   // this.transcribeTranslateService = new TranscribeTranslateService();
 
-    // Start the transcription session as soon as the WebSocket is open
-    //this.transcribeTranslateService.startTranscriptionSession();
+    console.log(
+      "WS:" +
+        this.ws +
+        "/n/r" +
+        "clientSessionId:" +
+        this.clientSessionId +
+        "/n/r" +
+        "url:" +
+        this.url +
+        "/n/r"
+    );
   }
 
   close() {
@@ -71,22 +74,22 @@ export class Session {
 
   setConversationId(conversationId: string) {
     this.conversationId = conversationId;
-    console.log(`Conversation Id: ${conversationId}.`);
+    console.log("Conversation id : " + conversationId);
   }
 
   setInputVariables(inputVariables: JsonStringMap) {
     this.inputVariables = inputVariables;
-    console.log(`inputVariables: ${inputVariables}.`);
+    console.log("inputVariables : " + inputVariables);
   }
 
   setSelectedMedia(selectedMedia: MediaParameter) {
     this.selectedMedia = selectedMedia;
-    console.log(`selectedMedia: ${selectedMedia}.`);
+    console.log("selectedMedia : " + selectedMedia);
   }
 
   setIsAudioPlaying(isAudioPlaying: boolean) {
     this.isAudioPlaying = isAudioPlaying;
-    console.log(`isAudioPlaying: ${isAudioPlaying}.`);
+    console.log("isAudioPlaying : " + isAudioPlaying);
   }
 
   processTextMessage(data: string) {
@@ -95,17 +98,8 @@ export class Session {
     }
 
     const message = JSON.parse(data);
-    const jsonMessage = JSON.parse(data);
-    console.log("Received Text Message:", message);
-    if(jsonMessage.type === "open"){
-      console.log('jsonMessage',jsonMessage);
-      console.log('message',message);
-      console.log('jsonMessage.parameters',jsonMessage.parameters);
-    }
-    if (jsonMessage.type === "open" && jsonMessage.parameters.inputVariables) {
-      this.participant = jsonMessage.parameters.inputVariables.Participant;
-      console.log(`New session opened for Participant: ${this.participant}`);
-    }
+    console.log("ProcessTextMessage : " + message);
+
     if (message.seq !== this.lastClientSequenceNumber + 1) {
       console.log(`Invalid client sequence number: ${message.seq}.`);
       this.sendDisconnect("error", "Invalid client sequence number.", {});
@@ -233,7 +227,6 @@ export class Session {
     const message = this.createMessage("disconnect", disconnectParameters);
 
     this.send(message);
-    console.log(`Disconnect triggered by endpoint: Reason=${reason}, Info=${info}`);
   }
 
   sendClosed() {
@@ -300,22 +293,8 @@ export class Session {
    * See `asr-service` in the `services` folder for more information.
    */
   processBinaryMessage(data: Uint8Array) {
-    console.log("Received Binary Audio Message of length:", data.length);
     if (this.disconnecting || this.closed || !this.selectedBot) {
       return;
-    }
-
-    // Pass the audio chunk to the transcription service
-   // this.transcribeTranslateService.processAudioChunk(data);
-
-    if (this.participant) {
-      console.log(
-        `Incoming Audio Data for ${this.participant}: ${data.length} bytes`
-      );
-    } else {
-      console.log(
-        `Incoming Audio Data (unknown participant): ${data.length} bytes`
-      );
     }
 
     // Ignore audio if we are capturing DTMF

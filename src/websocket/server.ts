@@ -4,8 +4,6 @@ import { verifyRequestSignature } from "../auth/authenticator";
 import { Session } from "../common/session";
 import { getPort } from "../common/environment-variables";
 import { SecretService } from "../services/secret-service";
-import { Buffer } from 'buffer';
-import { SpeechClient } from '@google-cloud/speech';
 
 export class Server {
   private app: Express | undefined;
@@ -14,18 +12,15 @@ export class Server {
   private sessionMap: Map<WebSocket, Session> = new Map();
   private secretService = new SecretService();
 
-  private speechClient!: SpeechClient;
-  private streamingRecognizeStream: any;
-
   start() {
-    console.log(`Starting server on ports: ${getPort()}`);
+    console.log(`Starting server on port: ${getPort()}`);
 
     this.app = express();
     this.httpServer = this.app.listen(getPort());
     this.wsServer = new WebSocket.Server({
       noServer: true,
     });
-    
+
     this.httpServer.on(
       "upgrade",
       (request: Request, socket: any, head: any) => {
@@ -55,36 +50,10 @@ export class Server {
     );
 
     this.wsServer.on("connection", (ws: WebSocket, request: Request) => {
-       this.speechClient = new SpeechClient();
-       const requestConfig = {
-         config: {
-           encoding: "LINEAR16",
-           sampleRateHertz: 16000,
-           languageCode: "en-US",
-         },
-         interimResults: false,
-       };
-
-       this.streamingRecognizeStream = this.speechClient
-         .streamingRecognize(requestConfig)
-         .on("error", console.error)
-         .on("data", (data) => {
-           console.log(
-             `Transcription: ${
-               data.results[0] && data.results[0].alternatives[0]
-                 ? data.results[0].alternatives[0].transcript
-                 : "No transcription."
-             }`
-           );
-         });
-
       ws.on("close", () => {
         const session = this.sessionMap.get(ws);
         console.log("WebSocket connection closed.");
         this.deleteConnection(ws);
-        if (this.streamingRecognizeStream) {
-          this.streamingRecognizeStream.end();
-        }
       });
 
       ws.on("error", (error: Error) => {
@@ -94,8 +63,6 @@ export class Server {
       });
 
       ws.on("message", (data: WS.RawData, isBinary: boolean) => {
-        console.log("base64",typeof data)
-        console.log("WebSocket message received." + data);
         if (ws.readyState !== WebSocket.OPEN) {
           return;
         }
@@ -114,18 +81,9 @@ export class Server {
         }
 
         if (isBinary) {
-          this.streamingRecognizeStream.write(data);
-          
-          const bufferData = data as Buffer;
-          session.processBinaryMessage(bufferData);
-          console.log("processBinaryMessage::Audio Data" + bufferData);
-
-          const audioChunk = bufferData.subarray(0, 100);
-          const base64Audio = Buffer.from(audioChunk).toString('base64');
-          console.log("processBinaryMessage::Base64 Audio Data:", base64Audio);
+          session.processBinaryMessage(data as Uint8Array);
         } else {
           session.processTextMessage(data.toString());
-          console.log("processTextMessage:: Audio Data" + data);
         }
       });
 
