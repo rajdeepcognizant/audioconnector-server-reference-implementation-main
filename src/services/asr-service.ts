@@ -74,23 +74,73 @@
 //     }
 // }
 
-import { EventEmitter } from "events";
+import EventEmitter from "events";
 import { SpeechClient } from "@google-cloud/speech";
-import { protos } from "@google-cloud/speech";
 
 export class ASRService {
   private emitter = new EventEmitter();
   private state = "None";
-  private client: SpeechClient;
-  private stream: any;
-  private isStreaming = false;
+  private speechClient = new SpeechClient();
+  private recognizeStream: any;
+  private streamInitialized = false;
 
   constructor() {
-    this.client = new SpeechClient();
+    this.initStream();
+  }
+
+  private initStream() {
+    this.recognizeStream = this.speechClient
+      .streamingRecognize({
+        config: {
+          encoding: "LINEAR16",
+          sampleRateHertz: 16000,
+          languageCode: "en-US",
+        },
+        interimResults: true,
+        singleUtterance: false,
+      })
+      .on("error", (err: any) => {
+        this.state = "Error";
+        this.emitter.emit("error", err.message);
+      })
+      .on("data", (data: any) => {
+        const result = data.results[0];
+        const transcript = result?.alternatives[0]?.transcript || "";
+        const confidence = result?.alternatives[0]?.confidence || 0;
+
+        if (result?.isFinal) {
+          this.state = "Complete";
+          this.emitter.emit(
+            "final-transcript",
+            new Transcript(transcript, confidence)
+          );
+        } else {
+          this.state = "Processing";
+          this.emitter.emit(
+            "transcript",
+            new Transcript(transcript, confidence)
+          );
+        }
+      });
+
+    // Send config first
+    this.recognizeStream.write({
+      streamingConfig: {
+        config: {
+          encoding: "LINEAR16",
+          sampleRateHertz: 16000,
+          languageCode: "en-US",
+        },
+        interimResults: true,
+        singleUtterance: false,
+      },
+    });
+
+    this.streamInitialized = true;
   }
 
   on(event: string, listener: (...args: any[]) => void): ASRService {
-    this.emitter?.addListener(event, listener);
+    this.emitter.addListener(event, listener);
     return this;
   }
 
@@ -98,75 +148,25 @@ export class ASRService {
     return this.state;
   }
 
-  /**
-   * Initializes the streaming connection to Google Speech-to-Text.
-   */
-  startStreaming(): void {
-    if (this.isStreaming) {
-      this.emitter.emit("error", "Streaming is already in progress.");
-      return;
-    }
-
-    const request = {
-      config: {
-        encoding:
-          protos.google.cloud.speech.v1.RecognitionConfig.AudioEncoding.MULAW,
-        sampleRateHertz: 8000,
-        languageCode: "en-US",
-      },
-      interimResults: true,
-    };
-
-    this.stream = this.client
-      .streamingRecognize(request)
-      .on("error", (err: Error) => {
-        this.isStreaming = false;
-        this.state = "Error";
-        this.emitter.emit("error", err.message);
-      })
-      .on("data", (data: any) => {
-        const transcript = data.results[0]?.alternatives[0]?.transcript;
-        if (transcript && data.results[0].isFinal) {
-          this.state = "Complete";
-          this.emitter.emit("final-transcript", {
-            text: transcript,
-            confidence: data.results[0].alternatives[0].confidence,
-          });
-          this.isStreaming = false;
-        } else if (transcript) {
-          // Emit interim results if needed
-          this.emitter.emit("interim-transcript", {
-            text: transcript,
-            confidence: data.results[0].alternatives[0].confidence,
-          });
-        }
-      });
-
-    this.isStreaming = true;
-    this.state = "Processing";
-  }
-
-  /**
-   * Sends a chunk of audio data to the Google Speech-to-Text stream.
-   */
   processAudio(data: Uint8Array): ASRService {
-    if (!this.isStreaming) {
-      // Automatically start the stream if not already started.
-      // In a real-world scenario, you might want to call startStreaming explicitly.
-      this.startStreaming();
+    if (!this.streamInitialized) {
+      this.emitter.emit("error", "Stream not initialized.");
+      return this;
     }
 
-    this.stream.write({ audioContent: Buffer.from(data) });
+    if (this.state === "Complete") {
+      this.emitter.emit("error", "Speech recognition has already completed.");
+      return this;
+    }
+
+    this.recognizeStream.write({ audioContent: data });
     return this;
   }
 
-  /**
-   * Closes the streaming connection.
-   */
-  stopStreaming(): void {
-    if (this.isStreaming) {
-      this.stream.end();
-      this.isStreaming = false;
+  close(): void {
+    if (this.recognizeStream) {
+      this.recognizeStream.end();
+      this.state = "Closed";
     }
   }
 }

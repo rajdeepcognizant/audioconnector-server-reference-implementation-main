@@ -79,17 +79,17 @@ export class Session {
 
   setInputVariables(inputVariables: JsonStringMap) {
     this.inputVariables = inputVariables;
-    console.log("inputVariables : " + inputVariables);
+    console.log("inputVariables : ", inputVariables);
   }
 
   setSelectedMedia(selectedMedia: MediaParameter) {
     this.selectedMedia = selectedMedia;
-    console.log("selectedMedia : " + selectedMedia);
+    console.log("selectedMedia : ", selectedMedia);
   }
 
   setIsAudioPlaying(isAudioPlaying: boolean) {
     this.isAudioPlaying = isAudioPlaying;
-    console.log("isAudioPlaying : " + isAudioPlaying);
+    console.log("isAudioPlaying : ", isAudioPlaying);
   }
 
   processTextMessage(data: string) {
@@ -98,7 +98,7 @@ export class Session {
     }
 
     const message = JSON.parse(data);
-    console.log("ProcessTextMessage : " + message);
+    console.log("ProcessTextMessage : " + data);
 
     if (message.seq !== this.lastClientSequenceNumber + 1) {
       console.log(`Invalid client sequence number: ${message.seq}.`);
