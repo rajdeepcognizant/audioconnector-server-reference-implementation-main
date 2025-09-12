@@ -5,6 +5,7 @@ import { Session } from "../common/session";
 import { getPort } from "../common/environment-variables";
 import { SecretService } from "../services/secret-service";
 import { Buffer } from 'buffer';
+import { SpeechClient } from '@google-cloud/speech';
 
 export class Server {
   private app: Express | undefined;
@@ -12,6 +13,16 @@ export class Server {
   private wsServer: any;
   private sessionMap: Map<WebSocket, Session> = new Map();
   private secretService = new SecretService();
+
+  private speechClient: SpeechClient;
+  private streamingRecognizeStream: any; // A stream to handle the audio data
+
+  constructor() {
+    // Instantiate the Speech-to-Text client.
+    // The library automatically handles authentication if the GOOGLE_APPLICATION_CREDENTIALS
+    // environment variable is set to the path of your service account key file.
+    this.speechClient = new SpeechClient();
+  }
 
   start() {
     console.log(`Starting server on ports: ${getPort()}`);
@@ -51,10 +62,37 @@ export class Server {
     );
 
     this.wsServer.on("connection", (ws: WebSocket, request: Request) => {
+
+       // Create the streaming recognition request when a new connection is established
+       const requestConfig = {
+        config: {
+          encoding: "LINEAR16", // Change this to your audio encoding
+          sampleRateHertz: 16000, // Change this to your audio sample rate
+          languageCode: "en-US", // Change to the appropriate language
+        },
+        interimResults: false, // Set to true to get results while the user is speaking
+      };
+
+      this.streamingRecognizeStream = this.speechClient
+        .streamingRecognize(requestConfig)
+        .on("error", console.error)
+        .on("data", (data) => {
+          // Here, you receive the transcription results from Google
+          console.log(
+            `Transcription: ${
+              data.results[0] && data.results[0].alternatives[0]
+                ? data.results[0].alternatives[0].transcript
+                : "No transcription."
+            }`
+          );
+        });
+
       ws.on("close", () => {
         const session = this.sessionMap.get(ws);
         console.log("WebSocket connection closed.");
         this.deleteConnection(ws);
+          // End the recognition stream when the connection closes
+          this.streamingRecognizeStream.end();
       });
 
       ws.on("error", (error: Error) => {
@@ -86,15 +124,17 @@ export class Server {
         if (isBinary) {
           session.processBinaryMessage(data as Uint8Array);
           console.log("processBinaryMessage::Audio Data" + data);
-          // Cast data to Buffer to access .subarray()
-        const bufferData = data as Buffer;
-        session.processBinaryMessage(bufferData);
-        console.log("processBinaryMessage::Audio Data" + bufferData);
 
-        // Convert the first 100 bytes to a Base64 string for inspection
-        const audioChunk = bufferData.subarray(0, 100);
-        const base64Audio = Buffer.from(audioChunk).toString('base64');
-        console.log("processBinaryMessage::Base64 Audio Data:", base64Audio);
+          this.streamingRecognizeStream.write(data);
+          // Cast data to Buffer to access .subarray()
+        // const bufferData = data as Buffer;
+        // session.processBinaryMessage(bufferData);
+        // console.log("processBinaryMessage::Audio Data" + bufferData);
+
+        // // Convert the first 100 bytes to a Base64 string for inspection
+        // const audioChunk = bufferData.subarray(0, 100);
+        // const base64Audio = Buffer.from(audioChunk).toString('base64');
+        // console.log("processBinaryMessage::Base64 Audio Data:", base64Audio);
         } else {
           session.processTextMessage(data.toString());
           console.log("processTextMessage:: Audio Data" + data);
