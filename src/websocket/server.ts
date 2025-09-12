@@ -14,7 +14,6 @@ export class Server {
   private sessionMap: Map<WebSocket, Session> = new Map();
   private secretService = new SecretService();
 
-  // Define properties but do not initialize them in the constructor
   private speechClient!: SpeechClient;
   private streamingRecognizeStream: any;
 
@@ -27,7 +26,6 @@ export class Server {
       noServer: true,
     });
     
-    // req,socket,head, req.header = upgrade, Connection : websocket
     this.httpServer.on(
       "upgrade",
       (request: Request, socket: any, head: any) => {
@@ -57,13 +55,12 @@ export class Server {
     );
 
     this.wsServer.on("connection", (ws: WebSocket, request: Request) => {
-       // Instantiate the client and stream here to avoid slow startup
        this.speechClient = new SpeechClient();
        const requestConfig = {
          config: {
-           encoding: "LINEAR16", // Change this to your audio encoding
-           sampleRateHertz: 16000, // Change this to your audio sample rate
-           languageCode: "en-US", // Change to the appropriate language
+           encoding: "LINEAR16",
+           sampleRateHertz: 16000,
+           languageCode: "en-US",
          },
          interimResults: false,
        };
@@ -85,7 +82,6 @@ export class Server {
         const session = this.sessionMap.get(ws);
         console.log("WebSocket connection closed.");
         this.deleteConnection(ws);
-        // End the recognition stream when the connection closes
         if (this.streamingRecognizeStream) {
           this.streamingRecognizeStream.end();
         }
@@ -118,15 +114,12 @@ export class Server {
         }
 
         if (isBinary) {
-          // Process the binary audio data and write to the stream
           this.streamingRecognizeStream.write(data);
           
-          // Cast data to Buffer to access .subarray()
           const bufferData = data as Buffer;
           session.processBinaryMessage(bufferData);
           console.log("processBinaryMessage::Audio Data" + bufferData);
 
-          // Convert the first 100 bytes to a Base64 string for inspection
           const audioChunk = bufferData.subarray(0, 100);
           const base64Audio = Buffer.from(audioChunk).toString('base64');
           console.log("processBinaryMessage::Base64 Audio Data:", base64Audio);
