@@ -1,6 +1,7 @@
 import { JsonStringMap } from "../protocol/core";
 import { BotTurnDisposition } from "../protocol/voice-bots";
 import { TTSService } from "./tts-service";
+import { makeApiCall } from './api-service';
 
 /*
 * This class provides support for retreiving a Bot Resource based on the supplied
@@ -15,20 +16,32 @@ export class BotService {
     }
 }
 
+interface ApiResponse {
+    endChat: boolean;
+    message: string;
+    status: string;
+}
+
 /*
 * This class provides support for the various methods needed to interact with an Bot.
 */
 export class BotResource {
     private ttsService = new TTSService();
+    private channelId: String | undefined;
+    private transactionId: String | undefined;
 
     /*
     * This method is used to retrieve the initial response from the Bot.
     * 
     * This is a "dummy" implementation that will need to be replaced.
     */
-    getInitialResponse(): Promise<BotResponse> {
-        const message = 'Hello and welcome to AudioConnector.';
+    getInitialResponse(connectionUrl: string, inputVariables: JsonStringMap): Promise<BotResponse> {
+        //this.channelId = '020966903';
+        this.channelId = inputVariables.dnis;
+        this.transactionId = inputVariables.custnum;
 
+        //const message = 'Hello and welcome to AudioConnector.';
+        const message = 'สวัสดีครับ ต้องการติดต่อสอบถามเรื่องใดคะ';
         /*
         * The TTS Service has a "dummy" implementation that will need
         * to be replaced.
@@ -49,14 +62,30 @@ export class BotResource {
     * 
     * This is a "dummy" implementation that will need to be replaced.
     */
-    getBotResponse(data: string): Promise<BotResponse> {
-        const message = 'We are unable to help at this time.';
+    async getBotResponse(data: string): Promise<BotResponse> {
+        //const message = 'ขอบคุณที่ติดต่อเข้ามาครับ';
+        console.log(`User: ${data}`);
+        const url = 'https://bo-bot-service-29514950838.us-central1.run.app/callback'
+        const requestBody = {
+            channelId: this.channelId,
+            transactionId: this.transactionId,
+            message: data,
+        };
+        const resStr = await makeApiCall(url, requestBody);
+        const resObj: ApiResponse = JSON.parse(resStr);
+        //if(res.status === 'success')
+        const message = resObj.message;
+        console.log(`AI: ${message}`);
 
         return this.ttsService.getAudioBytes(message)
             .then(audioBytes => new BotResponse('match', message)
                 .withConfidence(1.0)
-                .withEndSession(true)
+                .withEndSession(false)
                 .withAudioBytes(audioBytes));
+        /*return this.ttsService.getAudioBytes(message)
+            .then(audioBytes => new BotResponse('match', message)
+                .withConfidence(1.0)
+                .withEndSession(false));*/
     }
 }
 

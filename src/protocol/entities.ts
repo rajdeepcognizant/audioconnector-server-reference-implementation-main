@@ -3,6 +3,12 @@ import {
     EventEntityBargeIn,
     EventEntityBotTurnResponse
 } from './voice-bots';
+//import { EventEntityTranscript } from './entities-transcript';
+
+//export type EventEntityPredefined =
+//    | EventEntityTranscript
+//    | EventEntityBargeIn
+//    | EventEntityBotTurnResponse;
 
 export type EventEntityPredefined =
     | EventEntityBargeIn
