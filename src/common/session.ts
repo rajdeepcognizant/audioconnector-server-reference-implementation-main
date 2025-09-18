@@ -16,12 +16,14 @@ import {
   EventEntityBargeIn,
   EventEntityBotTurnResponse,
 } from "../protocol/voice-bots";
+import {
+  EventEntityDataTranscript,
+  EventEntityTranscript,
+} from "../protocol/entities-transcript";
 import { MessageHandlerRegistry } from "../websocket/message-handlers/message-handler-registry";
 import { BotService, BotResource, BotResponse } from "../services/bot-service";
 import { ASRService, Transcript } from "../services/asr-service";
 import { DTMFService } from "../services/dtmf-service";
-import { SpeechClient } from '@google-cloud/speech';
-import { Buffer } from 'buffer';
 
 export class Session {
   private MAXIMUM_BINARY_MESSAGE_SIZE = 64000;
@@ -43,23 +45,20 @@ export class Session {
   private selectedBot: BotResource | null = null;
   private isCapturingDTMF = false;
   private isAudioPlaying = false;
-  private participant: string | undefined;
-
-  // Instantiate the Speech-to-Text client
-  private speechClient: SpeechClient;
 
   constructor(ws: WebSocket, sessionId: string, url: string) {
     this.ws = ws;
     this.clientSessionId = sessionId;
     this.url = url;
-    this.speechClient = new SpeechClient();
   }
 
   close() {
     if (this.closed) {
       return;
     }
-
+    if (this.asrService) {
+      this.asrService.endStream();
+  }
     try {
       this.ws.close();
     } catch {}
@@ -69,22 +68,22 @@ export class Session {
 
   setConversationId(conversationId: string) {
     this.conversationId = conversationId;
-    console.log(`Conversation Id: ${conversationId}.`);
+    console.log(`Conversation ID: ${conversationId}`);
   }
 
   setInputVariables(inputVariables: JsonStringMap) {
     this.inputVariables = inputVariables;
-    console.log(`inputVariables: ${inputVariables}.`);
+    console.log(`inputVariables: ${inputVariables}`);
   }
 
   setSelectedMedia(selectedMedia: MediaParameter) {
     this.selectedMedia = selectedMedia;
-    console.log(`selectedMedia: ${selectedMedia}.`);
+    console.log(`selectedMedia: ${selectedMedia}`);
   }
 
   setIsAudioPlaying(isAudioPlaying: boolean) {
     this.isAudioPlaying = isAudioPlaying;
-    console.log(`isAudioPlaying: ${isAudioPlaying}.`);
+    console.log(`isAudioPlaying: ${isAudioPlaying}`);
   }
 
   processTextMessage(data: string) {
@@ -93,17 +92,7 @@ export class Session {
     }
 
     const message = JSON.parse(data);
-    const jsonMessage = JSON.parse(data);
-    console.log("Received Text Message:", message);
-    if(jsonMessage.type === "open"){
-      console.log('jsonMessage',jsonMessage);
-      console.log('message',message);
-      console.log('jsonMessage.parameters',jsonMessage.parameters);
-    }
-    if (jsonMessage.type === "open" && jsonMessage.parameters.inputVariables) {
-      this.participant = jsonMessage.parameters.inputVariables.Participant;
-      console.log(`New session opened for Participant: ${this.participant}`);
-    }
+
     if (message.seq !== this.lastClientSequenceNumber + 1) {
       console.log(`Invalid client sequence number: ${message.seq}.`);
       this.sendDisconnect("error", "Invalid client sequence number.", {});
@@ -159,6 +148,7 @@ export class Session {
       console.log(`Sending a ${message.type} message.`);
     }
 
+    console.log(`message: ` + JSON.stringify(message));
     this.ws.send(JSON.stringify(message));
   }
 
@@ -182,6 +172,11 @@ export class Session {
         currentPosition += this.MAXIMUM_BINARY_MESSAGE_SIZE;
       }
     }
+  }
+
+  sendText(message: String) {
+    console.log(`Sending ${message.length} text in 1 message.`);
+    this.ws.send(message, { binary: false });
   }
 
   sendBargeIn() {
@@ -216,6 +211,38 @@ export class Session {
     this.send(message);
   }
 
+  sendTranscript(transcript: string, confidence: number, isFinal: boolean) {
+    const channel = this.selectedMedia?.channels[0];
+
+    if (channel) {
+      const parameters: EventEntityDataTranscript = {
+        id: uuid(),
+        channel,
+        isFinal,
+        alternatives: [
+          {
+            confidence,
+            interpretations: [
+              {
+                type: "normalized",
+                transcript,
+              },
+            ],
+          },
+        ],
+      };
+      const transcriptEvent: EventEntityTranscript = {
+        type: "transcript",
+        data: parameters,
+      };
+      const message = this.createMessage("event", {
+        entities: [transcriptEvent],
+      } as SelectParametersForType<"event", EventParameters>);
+
+      this.send(message);
+    }
+  }
+
   sendDisconnect(
     reason: DisconnectReason,
     info: string,
@@ -231,7 +258,6 @@ export class Session {
     const message = this.createMessage("disconnect", disconnectParameters);
 
     this.send(message);
-    console.log(`Disconnect triggered by endpoint: Reason=${reason}, Info=${info}`);
   }
 
   sendClosed() {
@@ -239,6 +265,21 @@ export class Session {
     this.send(message);
   }
 
+  /*
+   * This method is using during the open process to validate that the information supplied points
+   * to a valid Bot Resource. There are a two places that can be looked at to get the required
+   * information to locate a Bot Resource: The connection URL, and Input Variables.
+   *
+   * In the connectionId field for an AudioConnector Bot in an Inbound Call Flow is where Bot information
+   * can be added. The baseUri property on the AudioConnector Integration is appened with the connectionId
+   * field, to form the end-result connection URL. Identifying Bot information can be in the form of URL
+   * path parts and/or Query String values. You may also use Input Variables to provide further customization
+   * if necessary.
+   *
+   * This part has a "dummy" implementation that will need to be replaced with an actual implementation.
+   *
+   * See `bot-service` in the `services` folder for more information.
+   */
   checkIfBotExists(): Promise<boolean> {
     return this.botService
       .getBotIfExists(this.url, this.inputVariables)
@@ -248,112 +289,128 @@ export class Session {
       });
   }
 
+  /*
+   * This method is used to provide the initial response from the Bot to the Client.
+   *
+   * This part has a "dummy" implementation that will need to be replaced with an actual implementation.
+   *
+   * See `bot-service` in the `services` folder for more information.
+   */
   processBotStart() {
     if (!this.selectedBot) {
       return;
     }
 
-    this.selectedBot.getInitialResponse().then((response: BotResponse) => {
-      if (response.text) {
-        this.sendTurnResponse(
-          response.disposition,
-          response.text,
-          response.confidence
-        );
-      }
+    this.selectedBot
+      .getInitialResponse(this.url, this.inputVariables)
+      .then((response: BotResponse) => {
+        if (response.text) {
+          this.sendTurnResponse(
+            response.disposition,
+            response.text,
+            response.confidence
+          );
+        }
 
-      if (response.audioBytes) {
-        this.sendAudio(response.audioBytes);
-      }
-    });
+        if (response.audioBytes) {
+          this.sendAudio(response.audioBytes);
+        }
+      });
   }
 
+  /*
+   * This method is used to process the incoming audio data from the Client.
+   * This part has a "dummy" implementation that will need to be replaced
+   * with a proper ASR engine.
+   *
+   * See `asr-service` in the `services` folder for more information.
+   */
   processBinaryMessage(data: Uint8Array) {
-    console.log("Received Binary Audio Message of length:", data.length);
     if (this.disconnecting || this.closed || !this.selectedBot) {
-      return;
+        return;
     }
-
-    const base64Audio = Buffer.from(data).toString('base64');
-
-    if (this.participant) {
-      console.log(
-        `Incoming Audio Data for ${this.participant}: ${data.length} bytes`
-      );
-    } else {
-      console.log(
-        `Incoming Audio Data (unknown participant): ${data.length} bytes`
-      );
-    }
-
+    
+    // Ignore audio if we are capturing DTMF
     if (this.isCapturingDTMF) {
-      return;
+        return;
     }
 
+    /*
+     * For this implementation, we are going to ignore input while there
+     * is audio playing. You may choose to continue to process audio if
+     * you want to enable support for Barge-In scenarios.
+     */
     if (this.isAudioPlaying) {
+      if (this.asrService) {
+        this.asrService.endStream();
+      }
       this.asrService = null;
       this.dtmfService = null;
       return;
     }
 
-    // Define the request configuration for the Speech-to-Text API
-    const request = {
-      audio: {
-        content: base64Audio,
-      },
-      config: {
-        encoding: 'LINEAR16',
-        sampleRateHertz: 16000,
-        languageCode: 'en-US',
-      },
-    };
+    // This is the correct way to initialize the ASR service.
+    // It should only be created if it doesn't already exist.
+    if (!this.asrService) {
+      this.asrService = new ASRService()
+        .on("error", (error: any) => {
+          if (this.isCapturingDTMF) {
+            return;
+          }
 
-    // Call the Google Speech-to-Text API to get the transcription
-    this.speechClient
-      .recognize(request)
-      .then(([response]) => {
-        const transcription = response.results
-          ?.map(result => result.alternatives?.[0].transcript)
-          .join('\n');
+          const message = "Error during Speech Recognition.";
+          console.log(`${message}: ${error}`);
+          this.sendDisconnect("error", message, {});
+        })
+        .on("transcript", (transcript: Transcript) => {
+          if (this.isCapturingDTMF) {
+            return;
+          }
 
-        if (transcription) {
-          console.log(`Transcription: ${transcription}`);
-          this.selectedBot
-            ?.getBotResponse(transcription)
-            .then((botResponse: BotResponse) => {
-              if (botResponse.text) {
-                this.sendTurnResponse(
-                  botResponse.disposition,
-                  botResponse.text,
-                  botResponse.confidence
-                );
-              }
-              if (botResponse.audioBytes) {
-                this.sendAudio(botResponse.audioBytes);
-              }
-              if (botResponse.endSession) {
-                this.sendDisconnect("completed", "", {});
-              }
-            });
-        }
-      })
-      .catch(error => {
-        console.error("Error with Google Speech-to-Text API:", error);
-        // Fallback or error handling can be placed here
-      });
-  }
+          this.sendTranscript(transcript.text, transcript.confidence, false);
+        })
+        .on("final-transcript", (transcript: Transcript) => {
+          if (this.isCapturingDTMF) {
+            return;
+          }
 
+          // You can re-enable the getBotResponse function here
+          console.log(`Final Transcription: ${transcript.text}`);
+          this.sendTranscript(transcript.text, transcript.confidence, true);
+
+        
+        });
+    }
+
+    this.asrService.processAudio(data);
+}
+    
+
+  /*
+   * This method is used to process the incoming DTMF digits from the Client.
+   * This part has a "dummy" implementation that will need to be replaced
+   * with proper logic.
+   *
+   * See `dtmf-service` in the `services` folder for more information.
+   */
   processDTMF(digit: string) {
     if (this.disconnecting || this.closed || !this.selectedBot) {
       return;
     }
 
+    /*
+     * For this implementation, we are going to ignore input while there
+     * is audio playing. You may choose to continue to process DTMF if
+     * you want to enable support for Barge-In scenarios.
+     */
     if (this.isAudioPlaying) {
       this.asrService = null;
       this.dtmfService = null;
       return;
     }
 
+    // If we are capturing DTMF, flag it so we stop capturing audio,
+    // and close down the audio capturing.
     if (!this.isCapturingDTMF) {
       this.isCapturingDTMF = true;
       this.asrService = null;
@@ -367,6 +424,8 @@ export class Session {
           this.sendDisconnect("error", message, {});
         })
         .on("final-digits", (digits) => {
+          this.sendTranscript(digits, 1.0, true);
+
           this.selectedBot
             ?.getBotResponse(digits)
             .then((response: BotResponse) => {
@@ -380,6 +439,8 @@ export class Session {
 
               if (response.audioBytes) {
                 this.sendAudio(response.audioBytes);
+              } else if (response.text && response.text.trim().length > 0) {
+                this.sendText(response.text);
               }
 
               if (response.endSession) {

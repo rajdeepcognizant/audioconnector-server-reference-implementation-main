@@ -1,10 +1,13 @@
 import EventEmitter from "events";
 import speech, { protos } from "@google-cloud/speech";
 
+/*
+ * This class provides ASR support for the incoming audio from the Client.
+ * It creates and manages a single, continuous stream to the Google Cloud Speech API.
+ */
 export class ASRService {
   private recognizeStream: NodeJS.WritableStream | null = null;
   private emitter = new EventEmitter();
-  private state = "None";
   private finalTranscript = "";
   private client = new speech.SpeechClient();
   private request = {
@@ -20,7 +23,13 @@ export class ASRService {
     interimResults: true,
   };
 
+  constructor() {
+    this.startStream();
+  }
+
+  // Starts a new recognition stream
   startStream() {
+    console.log("Starting a new speech recognition stream.");
     this.recognizeStream = this.client
       .streamingRecognize(this.request)
       .on("error", (error) => {
@@ -30,6 +39,7 @@ export class ASRService {
       .on("data", this.speechCallback.bind(this));
   }
 
+  // Ends the current recognition stream
   endStream() {
     if (this.recognizeStream) {
       console.log("Ending speech recognition stream.");
@@ -51,7 +61,6 @@ export class ASRService {
 
         if (result.isFinal) {
           console.log(`Final Transcription: ${this.finalTranscript}`);
-          this.state = "Complete";
           this.emitter.emit("final-transcript", {
             text: this.finalTranscript,
             confidence: 1.0,
@@ -61,24 +70,16 @@ export class ASRService {
           console.log(`Interim Transcription: ${transcript}`);
           this.emitter.emit("transcript", {
             text: transcript,
-            confidence: 1.0, // Interim results may not have a confidence score
+            confidence: 1.0,
           });
         }
       }
     }
   }
 
-  constructor() {
-    this.startStream();
-  }
-
   on(event: string, listener: (...args: any[]) => void): ASRService {
     this.emitter.addListener(event, listener);
     return this;
-  }
-
-  getState(): string {
-    return this.state;
   }
 
   processAudio(data: Uint8Array): ASRService {
