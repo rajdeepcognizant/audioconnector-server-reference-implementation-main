@@ -56,7 +56,9 @@ export class Session {
     if (this.closed) {
       return;
     }
-
+    if (this.asrService) {
+      this.asrService.endStream();
+  }
     try {
       this.ws.close();
     } catch {}
@@ -327,51 +329,62 @@ export class Session {
     if (this.disconnecting || this.closed || !this.selectedBot) {
         return;
     }
-
+    
     // Ignore audio if we are capturing DTMF
     if (this.isCapturingDTMF) {
         return;
     }
 
+    /*
+     * For this implementation, we are going to ignore input while there
+     * is audio playing. You may choose to continue to process audio if
+     * you want to enable support for Barge-In scenarios.
+     */
     if (this.isAudioPlaying) {
-        this.asrService = null;
-        this.dtmfService = null;
-        return;
+      if (this.asrService) {
+        this.asrService.endStream();
+      }
+      this.asrService = null;
+      this.dtmfService = null;
+      return;
     }
 
-    if (!this.asrService || this.asrService.getState() === "Complete") {
-        this.asrService = new ASRService()
-            .on("error", (error: any) => {
-                // ... existing error handler
-            })
-            .on("transcript", (transcript: Transcript) => {
-                // ... existing interim transcript handler
-            })
-            .on("final-transcript", (transcript: Transcript) => {
-                if (this.isCapturingDTMF) {
-                    return;
-                }
+    // This is the correct way to initialize the ASR service.
+    // It should only be created if it doesn't already exist.
+    if (!this.asrService) {
+      this.asrService = new ASRService()
+        .on("error", (error: any) => {
+          if (this.isCapturingDTMF) {
+            return;
+          }
 
-                console.log(`Final Transcription: ${transcript.text}`);
-                this.sendTranscript(transcript.text, transcript.confidence, true);
+          const message = "Error during Speech Recognition.";
+          console.log(`${message}: ${error}`);
+          this.sendDisconnect("error", message, {});
+        })
+        .on("transcript", (transcript: Transcript) => {
+          if (this.isCapturingDTMF) {
+            return;
+          }
 
-                // --- NEW LOGIC: Check for silence-based closure ---
-                // If the transcript is empty or very short, it indicates silence.
-                // This is the trigger to close the session.
-                if (transcript.text.trim().length < 2) {
-                    console.log("Empty or short transcript detected, likely silence. Ending session.");
-                    this.sendDisconnect("completed", "Session ended due to silence.", {});
-                    return; // Exit to prevent further processing
-                }
-                // --- END OF NEW LOGIC ---
+          this.sendTranscript(transcript.text, transcript.confidence, false);
+        })
+        .on("final-transcript", (transcript: Transcript) => {
+          if (this.isCapturingDTMF) {
+            return;
+          }
 
-                // The rest of your existing logic for processing the final transcript
-                // ... this.selectedBot.getBotResponse() etc.
-            });
+          // You can re-enable the getBotResponse function here
+          console.log(`Final Transcription: ${transcript.text}`);
+          this.sendTranscript(transcript.text, transcript.confidence, true);
+
+        
+        });
     }
 
     this.asrService.processAudio(data);
 }
+    
 
   /*
    * This method is used to process the incoming DTMF digits from the Client.
@@ -426,7 +439,7 @@ export class Session {
 
               if (response.audioBytes) {
                 this.sendAudio(response.audioBytes);
-              } else {
+              } else if (response.text && response.text.trim().length > 0) {
                 this.sendText(response.text);
               }
 
