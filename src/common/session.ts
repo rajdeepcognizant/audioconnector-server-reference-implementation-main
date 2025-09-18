@@ -370,27 +370,27 @@ export class Session {
           console.log(`Final Transcription: ${transcript.text}`);
           this.sendTranscript(transcript.text, transcript.confidence, true);
 
-          this.selectedBot
-            ?.getBotResponse(transcript.text)
-            .then((response: BotResponse) => {
-              if (response.text) {
-                this.sendTurnResponse(
-                  response.disposition,
-                  response.text,
-                  response.confidence
-                );
-              }
+          // this.selectedBot
+          //   ?.getBotResponse(transcript.text)
+          //   .then((response: BotResponse) => {
+          //     if (response.text) {
+          //       this.sendTurnResponse(
+          //         response.disposition,
+          //         response.text,
+          //         response.confidence
+          //       );
+          //     }
 
-              if (response.audioBytes) {
-                this.sendAudio(response.audioBytes);
-              } else {
-                this.sendText(response.text);
-              }
+          //     if (response.audioBytes) {
+          //       this.sendAudio(response.audioBytes);
+          //     } else {
+          //       this.sendText(response.text);
+          //     }
 
-              if (response.endSession) {
-                this.sendDisconnect("completed", "", {});
-              }
-            });
+          //     if (response.endSession) {
+          //       this.sendDisconnect("completed", "", {});
+          //     }
+          //   });
         });
     }
 
