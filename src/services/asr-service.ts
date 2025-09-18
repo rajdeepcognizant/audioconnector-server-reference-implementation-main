@@ -100,6 +100,7 @@ export class ASRService {
   private byteCount = 0;
   private processingText = false;
   private client = new speech.SpeechClient();
+  private silenceTimeout: NodeJS.Timeout | null = null;
   private request = {
     config: {
       encoding: "MULAW" as const, // Explicitly cast to enum value
@@ -187,11 +188,30 @@ export class ASRService {
         }
         */
     if (data && data.length > 0) {
-      if (this.recognizeStream != null && this.processingText === false) {
-        //console.log('Write Chunk!!!');
-        this.recognizeStream.write(data);
+      const isSilent = this.detectSilence(data, 0.01);
+
+      if (isSilent) {
+          // Check if a timer is already running
+          if (!this.silenceTimeout) {
+              console.log('Silence detected, starting timer...');
+              this.silenceTimeout = setTimeout(() => {
+                  console.log('Silence duration exceeded. Ending speech session.');
+                  this.recognizeStream?.end();
+                  this.silenceTimeout = null; // Clear the property after the timer fires
+              }, 3000); // 3-second timeout
+          }
+      } else {
+          // Sound detected, reset the timer
+          console.log('Sound detected. Resetting silence timer.');
+          if (this.silenceTimeout) {
+              clearTimeout(this.silenceTimeout);
+              this.silenceTimeout = null; // Clear the property so a new timer can start
+          }
       }
-      this.byteCount += data.length;
+      
+      if (this.recognizeStream != null && this.processingText === false) {
+          this.recognizeStream.write(data);
+      }
     } else {
       // no data coming from stream, write 0's into stream
       console.log("Nothing to write, buffer empty, writing dummy chunk");
@@ -293,3 +313,11 @@ export class Transcript {
     this.confidence = confidence;
   }
 }
+function setTimeout(arg0: () => void, arg1: number): any {
+  throw new Error("Function not implemented.");
+}
+
+function clearTimeout(silenceTimeout: any) {
+  throw new Error("Function not implemented.");
+}
+
